@@ -1,0 +1,337 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../polymer/polymer-element.html">
+<link rel="import" href="../polymer/lib/mixins/gesture-event-listeners.html">
+<link rel="import" href="../golden-gem/golden-gem.html">
+<dom-module id="golden-scrollable">
+<template>
+	<style>
+		:host {
+			display: flex;
+			image-rendering: pixelated;
+			height: 100%;
+			box-sizing: border-box;
+		}
+		:host * {
+			box-sizing: border-box;
+		}
+		#content {
+			height: 100%;
+			outline:0;
+    		overflow-y:hidden;
+    		overflow-x:auto;
+			flex: 1;
+		}
+		#scrollbar {
+			border:0;
+			/*float: right;*/
+			/*position:absolute;
+			right:0;
+			top:0;*/
+			height: 100%;
+			width: 24px;
+			/*padding: 27px 0;*/
+			margin-right: 0;
+			position: relative;
+			/*margin: 30px 10px 10px 0;*/
+			-webkit-user-drag: none !important;
+			-webkit-user-select: none;
+			-moz-user-select: none;
+			-ms-user-select: none;
+			-o-user-select: none;
+			user-select: none;
+		}
+		#track {
+			height: calc(100% - 54px);
+			background: url(../golden-assets/images/scrollbar_middle.gif) repeat-y center center;
+			width: 24px;
+			position: absolute;
+			top: 27px;
+			right: 0;
+			display: block;
+			/*cursor: $cursorHand;*/
+
+		}
+		.scrollbar-track:active {
+			/*cursor: $cursorClicked;*/
+		}
+		.arrow {
+			position: absolute;
+			width: 24px;
+			/*cursor: $cursorHand;*/
+		}
+		#up {
+            height: 27px;
+            top: -27px;
+            background: url(../golden-assets/images/sprite2.png) -464px 0;
+        }
+		#down {
+            height: 26px;
+            bottom: -26px;
+            background: url(../golden-assets/images/sprite2.png) -464px -26px;
+        }
+		.arrow golden-gem {
+			position: absolute;
+			top: 5px;
+			left: 5px;
+		}
+		#down golden-gem {
+			top: 7px;
+		}
+		#handle {
+			position:absolute;
+			background: url(../golden-assets/images/sprite2.png) -416px -96px;
+			width: 12px;
+			height: 17px;
+			left: 6px;
+			top:0;
+			transition:all .2s linear;
+			/*cursor: $cursorHand;*/
+
+		}
+		#handle:active {
+			/*cursor: $cursorClicked;*/
+		}
+		:host(.affixed)  {
+			display: block;
+			width: calc(100% - 30px);
+		}
+		:host(.affixed) #scrollbar {
+			right: -23px;
+			top: -2px;
+			position: absolute;
+		}
+		:host(.affixed) #up {
+			background-position: -488px 0;
+			left: 4px;
+			width: 20px;
+		}
+		:host(.affixed) #down {
+			background-position: -488px -27px;
+			left: 4px;
+			width: 20px;
+		}
+		:host(.affixed) #up golden-gem {
+			left: 1px;
+			top:5px;
+		}
+		:host(.affixed) #down golden-gem {
+			left: 1px;
+			top: 6px;
+		}
+		:host(.affixed) #content {
+			width: calc(100% + 30px);
+		}
+	</style>
+	<div id="content" on-mousewheel="mouseWheel">
+		<slot id="slot">
+
+		</slot>
+	</div>
+	<div id="scrollbar">
+		<div id="track" on-mousedown="trackTap" on-track="trackTrack">
+			<div id="up" class="arrow up" on-mousedown="up">
+				<golden-gem icon="arrow-up" no-frame class="no-frame" disabled tabindex="-1"></golden-gem>
+			</div>
+			<div id="handle"></div>
+			<div id="down" class="arrow down" on-mousedown="down">
+				<golden-gem icon="arrow-down" class="no-frame" tabindex="-1"></golden-gem>
+			</div>
+		</div>
+	</div>
+</template>
+
+<script>
+/**
+* @customElement
+* @polymer
+*/
+class GoldenScrollable extends Polymer.GestureEventListeners(Polymer.Element) {
+	static get is() { return 'golden-scrollable'; }
+	static get properties() {
+		return {
+			scrollIncrement: {
+				type: Number,
+				value: 37
+			},
+			sliceId: {
+				type: Number,
+				value: 0
+			}
+		}
+	}
+	ready() {
+		super.ready()
+		document.body.addEventListener('mouseup', this.onMouseup.bind(this))
+		Polymer.RenderStatus.beforeNextRender(this, this._computeSize)
+		Polymer.RenderStatus.beforeNextRender(this, this._shrinkParent)
+		this.addEventListener('dom-change', () => {
+			setTimeout(this._computeSize.bind(this))
+			setTimeout(this._shrinkParent.bind(this))
+		})
+		window.addEventListener('resize', this._computeSize.bind(this))
+		window.addEventListener('resize', this._shrinkParent.bind(this))
+		this.style.userSelect = 'none'
+	}
+	animate(scrollTop, duration){
+		var start = Date.now()
+		var startPos = this.$.content.scrollTop
+		var dist = scrollTop - startPos
+		function _animate(){
+			var elapsed = Date.now() - start
+			if (elapsed > duration) {
+				this.$.content.scrollTop = scrollTop
+				return
+			}
+			var ratio = elapsed / duration
+			this.$.content.scrollTop = startPos + dist * ratio
+			requestAnimationFrame(_animate.bind(this))
+		}
+		requestAnimationFrame(_animate.bind(this))
+	}
+	onMouseup(){
+		this.isArrowDown = false
+		this.isDragging = false
+		clearTimeout(this.timeout)
+	}
+	down(e){
+		e.stopPropagation()
+		this._computeSize()
+		this.iterations = 0
+		this.delay = 220
+		this.sliceId = Math.min(this.slices, this.sliceId + 1)
+		this.$.handle.style.top = this.sliceId * this.handleIncrement + 'px'
+		this.animate(this.contentIncrement * this.sliceId, 200)
+		this._updateArrowStatus()
+		this.isArrowDown = true
+		this.isDragging = true
+		this.timeout = setTimeout(this._handleArrowDownHold.bind(this), 400)
+	}
+	up(e){
+		e.stopPropagation()
+		this._computeSize()
+		this.iterations = 0
+		this.delay = 220
+		this.sliceId = Math.max(0, this.sliceId - 1)
+		this.$.handle.style.top = this.sliceId * this.handleIncrement + 'px'
+		this.animate(this.contentIncrement * this.sliceId, 200)
+		this._updateArrowStatus()
+		this.isArrowDown = true
+		this.isDragging = true
+		this.timeout = setTimeout(this._handleArrowUpHold.bind(this), 400)
+	}
+	trackTrack(e){
+		if (e.detail.state === 'start'){
+			var box = this.$.handle.getBoundingClientRect()
+			this.dragStart = e.detail.y
+			this.startPos = box.top
+		}
+		else if (e.detail.state === 'end'){
+			this.isDragging = false
+		}
+		else {
+			this._computeSize()
+			this.isDragging = true
+			var box = this.$.track.getBoundingClientRect()
+			var newTop = Math.max(0, Math.min(this.startPos + (e.detail.y - this.dragStart) - box.top, this.$.track.offsetHeight - this.$.handle.offsetHeight))
+			var ratio = newTop / (this.$.track.offsetHeight - this.$.handle.offsetHeight)
+			this.$.handle.style.top = newTop + 'px'
+			this.$.handle.style.transition = 'none'
+			this.$.content.scrollTop = (this.$.content.scrollHeight - this.$.content.offsetHeight) * ratio
+			this.sliceId = Math.round(this.slices * ratio)
+			this._updateArrowStatus()
+			this.$.handle.style.transition = 'all .2s linear'
+		}
+	}
+	trackTap(e){
+		if (this.isDragging || this.isArrowDown){
+			this.isDragging = false
+			this.isArrowDown = false
+			return false
+		}
+		this._computeSize()
+		var newTop = Math.max(0, Math.min(e.offsetY, this.$.track.offsetHeight - this.$.handle.offsetHeight))
+		var ratio = newTop / (this.$.track.offsetHeight - this.$.handle.offsetHeight)
+		this.$.handle.style.top = newTop + 'px'
+		this.animate((this.$.content.scrollHeight - this.$.content.offsetHeight) * ratio, 200)
+		this.sliceId = Math.round(this.slices * ratio)
+		this._updateArrowStatus()
+	}
+	mouseWheel(e){
+		this._computeSize()
+		if (e.deltaY > 0){
+			this.sliceId = Math.min(this.slices, this.sliceId + 1)
+		}
+		else {
+			this.sliceId = Math.max(0, this.sliceId - 1)
+		}
+		if (this.sliceId > 0 && this.sliceId < this.slices){
+			e.preventDefault()
+			e.stopPropagation()
+		}
+		this.$.handle.style.top = this.sliceId * this.handleIncrement + 'px'
+		this.$.handle.style.transition = 'none'
+		this.$.content.scrollTop = this.contentIncrement * this.sliceId
+		this._updateArrowStatus()
+		this.$.handle.style.transition = 'all .2s linear'
+	}
+	_computeSize(){
+		if (this.$.content.scrollHeight <= this.$.content.offsetHeight) this.$.scrollbar.hidden = true
+		else this.$.scrollbar.hidden = false
+		this.slices = Math.ceil((this.$.content.scrollHeight - this.$.content.offsetHeight) / this.scrollIncrement)
+		this.handleIncrement = (this.$.track.offsetHeight - this.$.handle.offsetHeight) / this.slices
+		this.contentIncrement = (this.$.content.scrollHeight - this.$.content.offsetHeight) / this.slices
+	}
+	_handleArrowUpHold(e){
+		this._computeSize()
+		this.sliceId = Math.max(0, this.sliceId - 1)
+		this.$.handle.style.top = this.sliceId * this.handleIncrement + 'px'
+		this.animate(this.contentIncrement * this.sliceId, 200)
+		this._updateArrowStatus()
+		if (this.isArrowDown){
+			this.delay = Math.max(50, 200 - this.iterations++ * 30)
+			this.timeout = setTimeout(this._handleArrowUpHold.bind(this), this.delay)
+		}
+	}
+	_handleArrowDownHold(e){
+		this._computeSize()
+		this.sliceId = Math.min(this.slices, this.sliceId + 1)
+		this.$.handle.style.top = this.sliceId * this.handleIncrement + 'px'
+		this.animate(this.contentIncrement * this.sliceId, 200)
+		this._updateArrowStatus()
+		if (this.isArrowDown){
+			this.delay = Math.max(50, 200 - this.iterations++ * 30)
+			this.timeout = setTimeout(this._handleArrowDownHold.bind(this), this.delay)
+		}
+	}
+	_updateArrowStatus(){
+		if (this.sliceId == 0){
+			this.$.up.querySelector('golden-gem').disabled = true
+			this.$.down.querySelector('golden-gem').disabled = false
+		}
+		else if (this.sliceId == this.slices){
+			this.$.up.querySelector('golden-gem').disabled = false
+			this.$.down.querySelector('golden-gem').disabled = true
+		}
+		else {
+			this.$.up.querySelector('golden-gem').disabled = false
+			this.$.down.querySelector('golden-gem').disabled = false
+		}
+	}
+	_getParentPanel(el, selector){
+		if (!el) return null
+		if (el.matches(selector)) return el
+		return this._getParentPanel(el.parentElement, selector)
+	}
+	_shrinkParent(){
+		var panel = this._getParentPanel(this.parentElement, '.frame')
+		if (!panel) return
+		if (this.classList.contains('affixed') && !this.$.scrollbar.hidden) {
+			panel.style.width = 'calc(100% - 15px)'
+		}
+		else panel.style.width = '100%'
+	}
+}
+
+window.customElements.define(GoldenScrollable.is, GoldenScrollable);
+</script>
+</dom-module>
